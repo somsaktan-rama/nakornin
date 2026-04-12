@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>มิเตอร์น้ำ Nakornin 1.02</title>
+  <title>มิเตอร์น้ำ Nakornin 1.03</title>
   
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   
@@ -13,46 +13,61 @@
   <style>
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; padding: 20px; background-color: #f4f7f6; }
     .container { max-width: 400px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-    h2 { color: #333; }
+    h2 { color: #333; margin-bottom: 5px; }
     input[type="number"] { padding: 12px; margin: 15px 0; width: 90%; font-size: 24px; text-align: center; border: 2px solid #ccc; border-radius: 8px; }
     button { padding: 15px; width: 100%; font-size: 18px; margin: 10px 0; cursor: pointer; border: none; border-radius: 8px; font-weight: bold; }
     
     .btn-camera { background-color: #007bff; color: white; }
     .btn-crop { background-color: #ffc107; color: black; display: none; }
+    .btn-read { background-color: #17a2b8; color: white; display: none; margin-top: 15px;}
     .btn-save { background-color: #28a745; color: white; }
     
     /* กล่องสำหรับครอปรูปและแสดงรูปที่ปรับแต่ง */
     .img-container { max-width: 100%; margin-top: 15px; display: none; }
     img { max-width: 100%; display: block; }
-    #processedCanvas { max-width: 100%; margin-top: 15px; display: none; border: 1px solid #ccc; border-radius: 8px; }
+    
+    /* ส่วนควบคุมการปรับภาพ */
+    .control-panel { display: none; background: #eee; padding: 15px; border-radius: 8px; margin-top: 15px; text-align: left; }
+    .control-panel label { font-weight: bold; display: block; margin-bottom: 5px; }
+    input[type=range] { width: 100%; margin-bottom: 10px; }
+    
+    #processedCanvas { max-width: 100%; margin-top: 10px; border: 2px dashed #007bff; border-radius: 4px; background-color: #fff;}
     
     #status { margin-top: 15px; font-weight: bold; color: #555; display: none; }
     .result-section { display: none; border-top: 2px solid #eee; margin-top: 20px; padding-top: 15px; }
-    .note { font-size: 12px; color: #666; margin-top: -10px; margin-bottom: 15px; }
+    .note { font-size: 12px; color: #666; margin-top: 5px; margin-bottom: 15px; }
   </style>
 </head>
 <body>
 
   <div class="container">
     <h2>💧 บันทึกมิเตอร์น้ำ</h2>
+    <p class="note">พยายามถ่ายให้เห็นเฉพาะหน้าปัด เลี่ยงแสงสะท้อน</p>
     
     <input type="file" accept="image/*" capture="environment" id="cameraInput" style="display:none;">
     <button class="btn-camera" onclick="document.getElementById('cameraInput').click()">📸 ถ่ายรูปมิเตอร์</button>
-    <p class="note">พยายามถ่ายให้เห็นเฉพาะหน้าปัดตัวเลข เลี่ยงแสงสะท้อน</p>
-
+    
     <div class="img-container" id="imgContainer">
       <img id="imageToCrop" alt="ภาพมิเตอร์">
     </div>
     
-    <button id="btnCrop" class="btn-crop">✂️ ยืนยันกรอบ & อ่านค่า</button>
+    <button id="btnCrop" class="btn-crop">✂️ ยืนยันกรอบตัวเลข</button>
 
-    <canvas id="processedCanvas"></canvas>
+    <div class="control-panel" id="controlPanel">
+      <label for="thresholdSlider">ปรับความเข้ม (Threshold): <span id="thresholdValue">130</span></label>
+      <input type="range" id="thresholdSlider" min="0" max="255" value="130">
+      <p style="font-size: 12px; color: #555; margin: 0;">* ปรับให้ตัวเลขดำสนิท และพื้นหลังขาวที่สุด</p>
+      
+      <canvas id="processedCanvas"></canvas>
+      
+      <button id="btnRead" class="btn-read">🤖 ให้ AI อ่านตัวเลขจากภาพนี้</button>
+    </div>
 
-    <p id="status">กำลังสกัดตัวเลข... ⏳</p>
+    <p id="status">กำลังดำเนินการ... ⏳</p>
 
     <div class="result-section" id="resultSection">
       <h3>ค่ามิเตอร์ (ตรวจสอบ/แก้ไขได้):</h3>
-      <input type="number" id="meterValue" step="0.1" placeholder="0.0">
+      <input type="number" id="meterValue" step="0.01" placeholder="0.00">
       <button class="btn-save" onclick="saveData()">💾 บันทึกข้อมูลลง Sheet</button>
     </div>
 
@@ -62,99 +77,106 @@
     // 🔴🔴🔴 นำ Web App URL จาก Google Apps Script มาวางที่นี่ 🔴🔴🔴
     const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxuY1Bh9ajaFTv_gn-GJa4MwaIgUxy2THMmsgxc0MeadFUHIbpgyfyNnbSUefFrdOOe/exec";
 
+    // --- ประกาศตัวแปร DOM ---
     const cameraInput = document.getElementById('cameraInput');
     const imageToCrop = document.getElementById('imageToCrop');
     const imgContainer = document.getElementById('imgContainer');
     const btnCrop = document.getElementById('btnCrop');
+    const controlPanel = document.getElementById('controlPanel');
+    const thresholdSlider = document.getElementById('thresholdSlider');
+    const thresholdValueText = document.getElementById('thresholdValue');
+    const processedCanvas = document.getElementById('processedCanvas');
+    const btnRead = document.getElementById('btnRead');
     const statusText = document.getElementById('status');
     const meterValueInput = document.getElementById('meterValue');
     const resultSection = document.getElementById('resultSection');
-    const processedCanvas = document.getElementById('processedCanvas');
     
     let cropper;
+    let croppedCanvasData = null; // เก็บภาพต้นฉบับที่ครอปมาแล้ว
 
-    // 1. เมื่อถ่ายรูปเสร็จ เอารูปมาแสดงและเปิดระบบ Crop
+    // 1. เมื่อถ่ายรูปเสร็จ เปิดระบบ Crop
     cameraInput.addEventListener('change', (event) => {
       const file = event.target.files[0];
       if (file) {
-        if (cropper) { cropper.destroy(); }
-        resultSection.style.display = 'none';
-        statusText.style.display = 'none';
-        processedCanvas.style.display = 'none';
-
+        resetUI();
         const url = URL.createObjectURL(file);
         imageToCrop.src = url;
         imgContainer.style.display = 'block';
         btnCrop.style.display = 'block';
 
         cropper = new Cropper(imageToCrop, {
-          viewMode: 1,
-          dragMode: 'move',
-          autoCropArea: 0.8,
-          restore: false,
-          guides: true,
-          center: true,
-          highlight: false,
-          cropBoxMovable: true,
-          cropBoxResizable: true,
-          toggleDragModeOnDblclick: false,
+          viewMode: 1, dragMode: 'move', autoCropArea: 0.8,
+          restore: false, guides: true, center: true, highlight: false,
+          cropBoxMovable: true, cropBoxResizable: true, toggleDragModeOnDblclick: false,
         });
       }
     });
 
-    // 2. เมื่อกดยืนยันการครอป -> ปรับภาพขาวดำ -> ส่งให้ AI อ่าน
-    btnCrop.addEventListener('click', async () => {
+    // 2. เมื่อกดยืนยันการครอป -> เปิดแผงควบคุม Pre-processing
+    btnCrop.addEventListener('click', () => {
       if (!cropper) return;
-
+      
+      // ซ่อนส่วน Crop
       btnCrop.style.display = 'none';
       imgContainer.style.display = 'none';
+      
+      // ดึงภาพที่ Crop เก็บไว้
+      const canvas = cropper.getCroppedCanvas();
+      croppedCanvasData = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
+      
+      // แสดงแผงควบคุม
+      controlPanel.style.display = 'block';
+      btnRead.style.display = 'block';
+      
+      // วาดภาพครั้งแรก
+      applyThreshold();
+    });
+
+    // 3. ฟังก์ชันปรับภาพขาวดำแบบ Real-time ตามสไลเดอร์
+    function applyThreshold() {
+      if (!croppedCanvasData) return;
+      
+      const threshold = parseInt(thresholdSlider.value);
+      thresholdValueText.innerText = threshold;
+      
+      processedCanvas.width = croppedCanvasData.width;
+      processedCanvas.height = croppedCanvasData.height;
+      const ctx = processedCanvas.getContext('2d');
+      
+      // คัดลอกข้อมูลรูปภาพมาประมวลผล เพื่อไม่ให้ทับต้นฉบับ
+      let imgData = new ImageData(
+        new Uint8ClampedArray(croppedCanvasData.data),
+        croppedCanvasData.width,
+        croppedCanvasData.height
+      );
+      
+      let data = imgData.data;
+      for (let i = 0; i < data.length; i += 4) {
+        let avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+        let bw = avg > threshold ? 255 : 0; 
+        data[i] = data[i+1] = data[i+2] = bw;
+      }
+      ctx.putImageData(imgData, 0, 0);
+    }
+
+    // เมื่อเลื่อนสไลเดอร์ ให้เรียกฟังก์ชันวาดภาพใหม่
+    thresholdSlider.addEventListener('input', applyThreshold);
+
+    // 4. เมื่อกดปุ่มอ่านค่า -> ส่งภาพจาก Canvas ให้ Tesseract
+    btnRead.addEventListener('click', async () => {
+      btnRead.style.display = 'none'; // ซ่อนปุ่มอ่านกันกดซ้ำ
       statusText.style.display = 'block';
-      statusText.innerText = "กำลังปรับแต่งภาพและอ่านตัวเลข... ⏳";
+      statusText.innerText = "🤖 AI กำลังอ่านตัวเลข... ⏳";
       statusText.style.color = "#007bff";
 
-      // ดึงภาพเฉพาะส่วนที่ Crop
-      const canvas = cropper.getCroppedCanvas();
-      const ctx = canvas.getContext('2d');
-      
-      // --- Pre-processing: แปลงภาพเป็นขาวดำ (Thresholding) ---
-      let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      let data = imageData.data;
-      
-      // ปรับค่าความเข้มตรงนี้ (0-255) ถ้ารูปสว่างไปให้เพิ่มค่า ถ้ารูปมืดไปให้ลดค่า
-      const threshold = 130; 
-
-      for (let i = 0; i < data.length; i += 4) {
-        // หาค่าเฉลี่ยสี (Grayscale)
-        let avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-        // ทำเป็นขาว-ดำ (Binarization) ช่วยตัดคราบสกปรกและเงา
-        let bw = avg > threshold ? 255 : 0; 
-        data[i] = bw;     // Red
-        data[i+1] = bw;   // Green
-        data[i+2] = bw;   // Blue
-      }
-      ctx.putImageData(imageData, 0, 0);
-      
-      // นำภาพขาวดำที่ได้ไปแสดงบนหน้าจอให้ผู้ใช้เห็น
-      processedCanvas.width = canvas.width;
-      processedCanvas.height = canvas.height;
-      const pCtx = processedCanvas.getContext('2d');
-      pCtx.putImageData(imageData, 0, 0);
-      processedCanvas.style.display = 'block';
-      // -----------------------------------------------------
-
-      // นำภาพขาวดำส่งให้ Tesseract อ่าน
-      const processedImageBase64 = canvas.toDataURL('image/jpeg');
+      const processedImageBase64 = processedCanvas.toDataURL('image/jpeg');
 
       try {
-        // ใช้ภาษาอังกฤษและจำกัดให้อ่านเฉพาะตัวเลขและจุด
         const result = await Tesseract.recognize(processedImageBase64, 'eng');
-        
         const text = result.data.text;
-        console.log("ข้อความดิบที่อ่านได้:", text); // เช็คใน Console ได้
         
         // กรองเอาเฉพาะตัวเลข
         const numbers = text.match(/\d+(\.\d+)?/g);
-
         resultSection.style.display = 'block';
 
         if (numbers && numbers.length > 0) {
@@ -168,12 +190,15 @@
           statusText.style.color = "#dc3545";
         }
       } catch (error) {
-        statusText.innerText = "เกิดข้อผิดพลาดในการประมวลผล";
+        statusText.innerText = "❌ เกิดข้อผิดพลาดในการอ่านภาพ";
+        statusText.style.color = "#dc3545";
         console.error(error);
+      } finally {
+        btnRead.style.display = 'block'; // แสดงปุ่มกลับคืนมาเผื่ออยากปรับแสงแล้วอ่านใหม่
       }
     });
 
-    // 3. ฟังก์ชันบันทึกลง Google Sheet
+    // 5. ฟังก์ชันบันทึกลง Google Sheet
     async function saveData() {
       const meterValue = meterValueInput.value;
       if (!meterValue) {
@@ -198,29 +223,33 @@
       try {
         await fetch(SCRIPT_URL, {
           method: 'POST',
-          mode: 'no-cors', // สำคัญมากสำหรับ Google Apps Script
-          headers: {
-            'Content-Type': 'application/json'
-          },
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
 
-        // เนื่องจาก no-cors จะไม่ส่ง response กลับมาแบบปกติ เราจะถือว่าสำเร็จถ้าไม่ติด error
         statusText.innerText = "✅ บันทึกข้อมูลลง Sheet เรียบร้อยแล้ว!";
         statusText.style.color = "#28a745";
         
-        // ล้างฟอร์มเตรียมรับรูปใหม่
-        meterValueInput.value = '';
-        resultSection.style.display = 'none';
-        processedCanvas.style.display = 'none';
-        
-        setTimeout(() => { statusText.style.display = 'none'; }, 3000);
+        setTimeout(() => { resetUI(); }, 2000);
 
       } catch (error) {
         statusText.innerText = "❌ เกิดข้อผิดพลาดในการบันทึก";
         statusText.style.color = "#dc3545";
         console.error(error);
       }
+    }
+
+    // ฟังก์ชันเคลียร์หน้าจอเตรียมรับรูปใหม่
+    function resetUI() {
+      if (cropper) cropper.destroy();
+      meterValueInput.value = '';
+      imgContainer.style.display = 'none';
+      btnCrop.style.display = 'none';
+      controlPanel.style.display = 'none';
+      resultSection.style.display = 'none';
+      statusText.style.display = 'none';
+      croppedCanvasData = null;
     }
   </script>
 </body>
