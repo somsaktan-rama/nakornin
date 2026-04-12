@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>มิเตอร์น้ำ Nakornin 1.01</title>
+  <title>มิเตอร์น้ำ Nakornin 1.02</title>
   
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
   
@@ -99,46 +99,47 @@
     });
 
     // 2. เมื่อกดยืนยันการครอป -> ส่งไปให้ AI (Tesseract) อ่าน
-    btnCrop.addEventListener('click', async () => {
-      if (!cropper) return;
+// แทนที่ส่วนการอ่านค่าใน btnCrop.addEventListener
+btnCrop.addEventListener('click', async () => {
+  if (!cropper) return;
 
-      // ปิดปุ่มครอป แสดงสถานะโหลด
-      btnCrop.style.display = 'none';
-      imgContainer.style.display = 'none';
-      statusText.style.display = 'block';
-      statusText.innerText = "กำลังสกัดตัวเลขจากภาพที่ตัดแล้ว... ⏳";
-      statusText.style.color = "#007bff";
+  const canvas = cropper.getCroppedCanvas();
+  const ctx = canvas.getContext('2d');
+  
+  // --- ส่วนเติมพลัง: Pre-processing ให้ภาพคมชัดขึ้น ---
+  let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  let data = imageData.data;
+  for (let i = 0; i < data.length; i += 4) {
+    // ทำเป็นขาวดำ
+    let avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+    // ปรับ Threshold (ถ้าสว่างเกินไปให้เป็นขาว ถ้ามืดให้เป็นดำ)
+    let thresh = avg > 128 ? 255 : 0; 
+    data[i] = data[i+1] = data[i+2] = thresh;
+  }
+  ctx.putImageData(imageData, 0, 0);
+  // -------------------------------------------
 
-      // ดึงภาพเฉพาะส่วนที่ผู้ใช้เลือก (Crop มาแล้ว)
-      const canvas = cropper.getCroppedCanvas();
-      const croppedImageBase64 = canvas.toDataURL('image/jpeg');
+  const processedImage = canvas.toDataURL('image/jpeg', 1.0);
 
-      try {
-        // สั่ง Tesseract อ่านรูปที่ถูกตัดแล้ว
-        const result = await Tesseract.recognize(croppedImageBase64, 'eng');
-        const text = result.data.text;
-        
-        // ดึงเฉพาะตัวเลขและจุดทศนิยม
-        const numbers = text.match(/\d+(\.\d+)?/g);
-
-        resultSection.style.display = 'block'; // แสดงช่องให้กรอกเลข
-
-        if (numbers && numbers.length > 0) {
-          const likelyMeter = numbers.sort((a, b) => b.length - a.length)[0];
-          meterValueInput.value = likelyMeter;
-          statusText.innerText = "✅ อ่านค่าเสร็จสิ้น (กรุณาตรวจสอบก่อนบันทึก)";
-          statusText.style.color = "#28a745";
-        } else {
-          meterValueInput.value = "";
-          statusText.innerText = "❌ หาตัวเลขไม่เจอ กรุณาพิมพ์เอง";
-          statusText.style.color = "#dc3545";
-        }
-      } catch (error) {
-        statusText.innerText = "เกิดข้อผิดพลาดในการประมวลผลรูปภาพ";
-        console.error(error);
-      }
+  try {
+    // ตั้งค่าให้ Tesseract เน้นอ่านตัวเลขเท่านั้น
+    const result = await Tesseract.recognize(processedImage, 'eng', {
+      tessedit_char_whitelist: '0123456789.' 
     });
-
+    
+    const text = result.data.text.replace(/[^0-9.]/g, ''); // กรองเอาแต่ตัวเลข
+    if (text) {
+      meterValueInput.value = text;
+      statusText.innerText = "✅ อ่านค่าเสร็จสิ้น";
+    } else {
+      statusText.innerText = "❌ อ่านไม่ได้ กรุณากรอกเอง";
+    }
+    resultSection.style.display = 'block';
+  } catch (error) {
+    console.error(error);
+  }
+});
+    
     // 3. ฟังก์ชันบันทึกลง Google Sheet (โค้ดเดิม)
     async function saveData() {
       const meterValue = meterValueInput.value;
