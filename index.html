@@ -3,19 +3,30 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>มิเตอร์น้ำ Nakornin 1.00</title>
+  <title>มิเตอร์น้ำ Nakornin 1.01</title>
+  
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+
   <style>
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; padding: 20px; background-color: #f4f7f6; }
     .container { max-width: 400px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
     h2 { color: #333; }
     input[type="number"] { padding: 12px; margin: 15px 0; width: 90%; font-size: 24px; text-align: center; border: 2px solid #ccc; border-radius: 8px; }
     button { padding: 15px; width: 100%; font-size: 18px; margin: 10px 0; cursor: pointer; border: none; border-radius: 8px; font-weight: bold; }
+    
     .btn-camera { background-color: #007bff; color: white; }
+    .btn-crop { background-color: #ffc107; color: black; display: none; } /* ซ่อนปุ่มครอปไว้ก่อน */
     .btn-save { background-color: #28a745; color: white; }
-    img { max-width: 100%; height: auto; border-radius: 8px; margin-top: 10px; display: none; }
-    #status { margin-top: 15px; font-weight: bold; color: #555; }
-    .loader { display: none; color: #007bff; font-weight: bold; }
+    
+    /* กล่องสำหรับครอปรูป */
+    .img-container { max-width: 100%; margin-top: 15px; display: none; }
+    img { max-width: 100%; display: block; }
+    
+    #status { margin-top: 15px; font-weight: bold; color: #555; display: none; }
+    .result-section { display: none; border-top: 2px solid #eee; margin-top: 20px; padding-top: 15px; }
   </style>
 </head>
 <body>
@@ -26,61 +37,109 @@
     <input type="file" accept="image/*" capture="environment" id="cameraInput" style="display:none;">
     <button class="btn-camera" onclick="document.getElementById('cameraInput').click()">📸 ถ่ายรูปมิเตอร์</button>
 
-    <img id="preview" alt="ภาพมิเตอร์">
-    <p id="status" class="loader">กำลังสกัดตัวเลขจากภาพ... ⏳</p>
+    <div class="img-container" id="imgContainer">
+      <img id="imageToCrop" alt="ภาพมิเตอร์">
+    </div>
+    
+    <button id="btnCrop" class="btn-crop">✂️ ยืนยันพื้นที่ตัวเลข & อ่านค่า</button>
 
-    <h3>ค่ามิเตอร์ (แก้ไขได้):</h3>
-    <input type="number" id="meterValue" step="0.01" placeholder="0.00">
+    <p id="status">กำลังสกัดตัวเลขจากภาพ... ⏳</p>
 
-    <button class="btn-save" onclick="saveData()">💾 บันทึกข้อมูลลง Sheet</button>
+    <div class="result-section" id="resultSection">
+      <h3>ค่ามิเตอร์ (แก้ไขได้):</h3>
+      <input type="number" id="meterValue" step="0.01" placeholder="0.00">
+      <button class="btn-save" onclick="saveData()">💾 บันทึกข้อมูลลง Sheet</button>
+    </div>
+
   </div>
 
   <script>
-    // 🔴🔴🔴 นำ Web App URL จาก Google Apps Script มาวางที่นี่ 🔴🔴🔴
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxD1nOl01XZO2KgDabuXWm9q2fZ35DFW_xCsGLBnK7WhqGm6kjSqjtTelhFrOVBDKc9/exec";
+    // 🔴🔴🔴 นำ Web App URL จาก Google Apps Script มาวางที่นี่เหมือนเดิม 🔴🔴🔴
+    const SCRIPT_URL = "YOUR_WEB_APP_URL_HERE";
 
     const cameraInput = document.getElementById('cameraInput');
-    const preview = document.getElementById('preview');
+    const imageToCrop = document.getElementById('imageToCrop');
+    const imgContainer = document.getElementById('imgContainer');
+    const btnCrop = document.getElementById('btnCrop');
     const statusText = document.getElementById('status');
     const meterValueInput = document.getElementById('meterValue');
+    const resultSection = document.getElementById('resultSection');
+    
+    let cropper; // ตัวแปรเก็บระบบครอป
 
-    // เมื่อถ่ายรูปเสร็จ
-    cameraInput.addEventListener('change', async (event) => {
+    // 1. เมื่อถ่ายรูปเสร็จ เอารูปมาแสดงและเปิดระบบ Crop
+    cameraInput.addEventListener('change', (event) => {
       const file = event.target.files[0];
       if (file) {
-        // แสดงรูปที่ถ่าย
-        preview.src = URL.createObjectURL(file);
-        preview.style.display = 'block';
-        statusText.style.display = 'block';
-        statusText.innerText = "กำลังสกัดตัวเลขจากภาพ... ⏳";
+        // ล้างค่าเก่า
+        if (cropper) { cropper.destroy(); }
+        resultSection.style.display = 'none';
+        statusText.style.display = 'none';
 
-        try {
-          // สั่งให้ Tesseract.js อ่านข้อความ
-          const result = await Tesseract.recognize(file, 'eng');
-          const text = result.data.text;
-          
-          // ใช้ Regex ดึงมาเฉพาะตัวเลข (และจุดทศนิยม)
-          const numbers = text.match(/\d+(\.\d+)?/g);
+        // เอารูปขึ้นจอ
+        const url = URL.createObjectURL(file);
+        imageToCrop.src = url;
+        imgContainer.style.display = 'block';
+        btnCrop.style.display = 'block';
 
-          if (numbers && numbers.length > 0) {
-            // เลือกตัวเลขที่ยาวที่สุดหรือกลุ่มแรก (มักจะเป็นเลขมิเตอร์)
-            // คุณสามารถปรับแก้ตรรกะตรงนี้ได้ตามลักษณะหน้าปัดมิเตอร์จริง
-            const likelyMeter = numbers.sort((a, b) => b.length - a.length)[0];
-            meterValueInput.value = likelyMeter;
-            statusText.innerText = "✅ อ่านค่าเสร็จสิ้น (กรุณาตรวจสอบก่อนบันทึก)";
-            statusText.style.color = "#28a745";
-          } else {
-            statusText.innerText = "❌ หาตัวเลขไม่เจอ กรุณาพิมพ์เอง";
-            statusText.style.color = "#dc3545";
-          }
-        } catch (error) {
-          statusText.innerText = "เกิดข้อผิดพลาดในการประมวลผลรูปภาพ";
-          console.error(error);
-        }
+        // เปิดการทำงาน Cropper.js
+        cropper = new Cropper(imageToCrop, {
+          viewMode: 1,
+          dragMode: 'move',
+          autoCropArea: 0.6, // ขนาดกล่องเริ่มต้น (60% ของรูป)
+          restore: false,
+          guides: true,
+          center: true,
+          highlight: false,
+          cropBoxMovable: true,
+          cropBoxResizable: true,
+          toggleDragModeOnDblclick: false,
+        });
       }
     });
 
-    // เมื่อกดปุ่มบันทึก
+    // 2. เมื่อกดยืนยันการครอป -> ส่งไปให้ AI (Tesseract) อ่าน
+    btnCrop.addEventListener('click', async () => {
+      if (!cropper) return;
+
+      // ปิดปุ่มครอป แสดงสถานะโหลด
+      btnCrop.style.display = 'none';
+      imgContainer.style.display = 'none';
+      statusText.style.display = 'block';
+      statusText.innerText = "กำลังสกัดตัวเลขจากภาพที่ตัดแล้ว... ⏳";
+      statusText.style.color = "#007bff";
+
+      // ดึงภาพเฉพาะส่วนที่ผู้ใช้เลือก (Crop มาแล้ว)
+      const canvas = cropper.getCroppedCanvas();
+      const croppedImageBase64 = canvas.toDataURL('image/jpeg');
+
+      try {
+        // สั่ง Tesseract อ่านรูปที่ถูกตัดแล้ว
+        const result = await Tesseract.recognize(croppedImageBase64, 'eng');
+        const text = result.data.text;
+        
+        // ดึงเฉพาะตัวเลขและจุดทศนิยม
+        const numbers = text.match(/\d+(\.\d+)?/g);
+
+        resultSection.style.display = 'block'; // แสดงช่องให้กรอกเลข
+
+        if (numbers && numbers.length > 0) {
+          const likelyMeter = numbers.sort((a, b) => b.length - a.length)[0];
+          meterValueInput.value = likelyMeter;
+          statusText.innerText = "✅ อ่านค่าเสร็จสิ้น (กรุณาตรวจสอบก่อนบันทึก)";
+          statusText.style.color = "#28a745";
+        } else {
+          meterValueInput.value = "";
+          statusText.innerText = "❌ หาตัวเลขไม่เจอ กรุณาพิมพ์เอง";
+          statusText.style.color = "#dc3545";
+        }
+      } catch (error) {
+        statusText.innerText = "เกิดข้อผิดพลาดในการประมวลผลรูปภาพ";
+        console.error(error);
+      }
+    });
+
+    // 3. ฟังก์ชันบันทึกลง Google Sheet (โค้ดเดิม)
     async function saveData() {
       const meterValue = meterValueInput.value;
       if (!meterValue) {
@@ -92,11 +151,8 @@
       statusText.innerText = "กำลังบันทึกข้อมูล... ⏳";
       statusText.style.color = "#007bff";
 
-      // ดึงเวลาปัจจุบัน
       const now = new Date();
-      // จัด Format วันที่ YYYY-MM-DD
       const dateStr = now.toLocaleDateString('en-CA'); 
-      // จัด Format เวลา HH:MM:SS
       const timeStr = now.toLocaleTimeString('en-GB');
 
       const payload = {
@@ -106,20 +162,17 @@
       };
 
       try {
-        // ส่งข้อมูลไปที่ Google Apps Script
         await fetch(SCRIPT_URL, {
           method: 'POST',
-          mode: 'no-cors', // จำเป็นต้องใช้ no-cors สำหรับ Google Apps Script
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
         });
 
         statusText.innerText = "✅ บันทึกข้อมูลเรียบร้อยแล้ว!";
         statusText.style.color = "#28a745";
         meterValueInput.value = '';
-        preview.style.display = 'none';
+        resultSection.style.display = 'none';
         
         setTimeout(() => { statusText.style.display = 'none'; }, 3000);
 
