@@ -3,131 +3,121 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>จดมิเตอร์น้ำ Nakornin</title>
+  <title>จดมิเตอร์ Nakornin</title>
   <style>
-    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; padding: 20px; background-color: #f4f7f6; }
-    .container { max-width: 400px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-    h2 { color: #333; margin-bottom: 5px; }
-    
-    /* ส่วนรูปภาพ */
-    .img-container { margin-top: 15px; display: none; border: 2px dashed #ccc; border-radius: 8px; overflow: hidden; background: #000; }
-    img { width: 100%; display: block; }
-    
-    /* ฟอร์มและปุ่ม */
-    input[type="number"] { padding: 15px; margin: 10px 0; width: 90%; font-size: 28px; text-align: center; border: 2px solid #007bff; border-radius: 8px; font-weight: bold; color: #333; }
-    button { padding: 15px; width: 100%; font-size: 18px; margin: 10px 0; cursor: pointer; border: none; border-radius: 8px; font-weight: bold; transition: 0.2s; }
-    .btn-camera { background-color: #6c757d; color: white; }
-    .btn-save { background-color: #28a745; color: white; }
-    
-    .last-meter-text { font-size: 14px; color: #555; font-weight: bold; margin-top: 15px; background: #e9ecef; padding: 8px; border-radius: 5px; }
+    body { font-family: 'Segoe UI', sans-serif; text-align: center; padding: 20px; background-color: #f4f7f6; }
+    .container { max-width: 400px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+    .info-box { background: #e9ecef; padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 14px; text-align: left; }
+    .calc-box { background: #fff3cd; padding: 10px; border-radius: 8px; margin: 15px 0; font-size: 16px; border: 1px solid #ffeeba; display: none; }
+    input[type="number"] { width: 90%; padding: 15px; font-size: 28px; text-align: center; border: 2px solid #007bff; border-radius: 8px; margin: 10px 0; }
+    button { width: 100%; padding: 15px; font-size: 18px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; }
+    .btn-camera { background: #6c757d; color: white; margin-bottom: 10px; }
+    .btn-save { background: #28a745; color: white; }
+    img { width: 100%; border-radius: 8px; margin-top: 10px; display: none; border: 1px solid #ccc; }
     #status { margin-top: 15px; font-weight: bold; }
   </style>
 </head>
 <body>
 
-  <div class="container">
-    <h2>💧 บันทึกมิเตอร์น้ำ</h2>
-    
-    <div class="last-meter-text" id="lastMeterDisplay">กำลังดึงค่าครั้งล่าสุด... ⏳</div>
+<div class="container">
+  <h2>💧 บันทึกมิเตอร์น้ำ</h2>
+  
+  <div class="info-box" id="lastInfo">กำลังดึงข้อมูลล่าสุด...</div>
 
-    <input type="file" accept="image/*" capture="environment" id="cameraInput" style="display:none;">
-    <button class="btn-camera" onclick="document.getElementById('cameraInput').click()">📸 ถ่ายรูปมิเตอร์ (เพื่อดูประกอบ)</button>
+  <input type="file" accept="image/*" capture="environment" id="cameraInput" style="display:none;">
+  <button class="btn-camera" onclick="document.getElementById('cameraInput').click()">📸 ถ่ายรูปดูเลขมิเตอร์</button>
+  <img id="preview" alt="Preview">
 
-    <div class="img-container" id="imgContainer">
-      <img id="previewImage" alt="ภาพมิเตอร์">
-    </div>
+  <h3 style="margin-bottom:5px;">ป้อนเลขมิเตอร์ใหม่:</h3>
+  <input type="number" id="meterInput" step="0.1" placeholder="0.0">
 
-    <h3 style="margin-top: 20px;">ระบุเลขมิเตอร์:</h3>
-    <input type="number" id="meterValue" step="0.1" placeholder="xxxx.x">
-    
-    <button class="btn-save" onclick="saveData()">💾 บันทึกข้อมูล</button>
-    <p id="status"></p>
+  <div class="calc-box" id="calcResult">
+    <div>ใช้น้ำไป: <span id="diffUnit">0</span> หน่วย</div>
+    <div>เฉลี่ย: <span id="avgUnit">0</span> หน่วย/วัน</div>
   </div>
 
-  <script>
-    // 🔴🔴🔴 วาง URL ของ Google Apps Script ของคุณที่นี่ 🔴🔴🔴
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxuY1Bh9ajaFTv_gn-GJa4MwaIgUxy2THMmsgxc0MeadFUHIbpgyfyNnbSUefFrdOOe/exec";
+  <button class="btn-save" onclick="saveData()">💾 บันทึกข้อมูล</button>
+  <p id="status"></p>
+</div>
 
-    const cameraInput = document.getElementById('cameraInput');
-    const previewImage = document.getElementById('previewImage');
-    const imgContainer = document.getElementById('imgContainer');
-    const meterValueInput = document.getElementById('meterValue');
-    const lastMeterDisplay = document.getElementById('lastMeterDisplay');
-    const statusText = document.getElementById('status');
+<script>
+  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxuY1Bh9ajaFTv_gn-GJa4MwaIgUxy2THMmsgxc0MeadFUHIbpgyfyNnbSUefFrdOOe/exec"; // 🔴 เปลี่ยนเป็น URL ของคุณ
+  let lastMeter = 0;
+  let lastDate = null;
 
-    // 1. ดึงค่าล่าสุดอัตโนมัติเมื่อเปิดหน้าเว็บ
-    window.onload = async () => {
-      try {
-        const response = await fetch(SCRIPT_URL);
-        const data = await response.json();
-        
-        if (data.status === "success" && data.lastMeter !== "") {
-          lastMeterDisplay.innerText = "ค่าครั้งก่อนคือ: " + data.lastMeter;
-          meterValueInput.value = data.lastMeter; // เอาเลขเดิมใส่รอในช่องกรอกเลย
-        } else {
-          lastMeterDisplay.innerText = "ไม่พบข้อมูลครั้งก่อน";
-        }
-      } catch (error) {
-        lastMeterDisplay.innerText = "เชื่อมต่อฐานข้อมูลล้มเหลว (กรอกเองได้เลย)";
-        console.error(error);
+  // 1. ดึงข้อมูลล่าสุดเมื่อโหลดหน้าเว็บ
+  window.onload = async () => {
+    try {
+      const resp = await fetch(SCRIPT_URL);
+      const data = await resp.json();
+      if (data.status === "success") {
+        lastMeter = data.lastMeter;
+        lastDate = new Date(data.lastDate);
+        document.getElementById('lastInfo').innerHTML = `
+          <b>บันทึกครั้งก่อน:</b> ${data.lastDate}<br>
+          <b>เลขมิเตอร์เดิม:</b> ${lastMeter}
+        `;
+        document.getElementById('meterInput').value = lastMeter;
       }
-    };
+    } catch (e) { console.error(e); }
+  };
 
-    // 2. เมื่อถ่ายรูปเสร็จ เอารูปขึ้นจอให้ดู
-    cameraInput.addEventListener('change', (event) => {
-      const file = event.target.files[0];
-      if (file) {
-        previewImage.src = URL.createObjectURL(file);
-        imgContainer.style.display = 'block';
-        // เลื่อนหน้าจอลงมาที่ช่องกรอกอัตโนมัติ
-        meterValueInput.focus();
-      }
-    });
-
-    // 3. ฟังก์ชันบันทึกข้อมูล
-    async function saveData() {
-      const meterValue = meterValueInput.value;
-      if (!meterValue) {
-        alert("กรุณาระบุค่ามิเตอร์ก่อนบันทึก");
-        return;
-      }
-
-      statusText.style.display = 'block';
-      statusText.innerText = "กำลังบันทึกข้อมูล... ⏳";
-      statusText.style.color = "#007bff";
-
-      const now = new Date();
-      const payload = {
-        date: now.toLocaleDateString('en-CA'), // YYYY-MM-DD
-        time: now.toLocaleTimeString('en-GB'), // HH:MM:SS
-        meter: meterValue
-      };
-
-      try {
-        await fetch(SCRIPT_URL, {
-          method: 'POST',
-          mode: 'no-cors',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-
-        statusText.innerText = "✅ บันทึกข้อมูลเรียบร้อยแล้ว!";
-        statusText.style.color = "#28a745";
-        
-        // อัปเดตค่าครั้งก่อนเป็นค่าที่พึ่งกรอกไป
-        lastMeterDisplay.innerText = "บันทึกล่าสุด: " + meterValue;
-        
-        setTimeout(() => { 
-          statusText.style.display = 'none'; 
-          imgContainer.style.display = 'none'; // ปิดรูป
-        }, 3000);
-
-      } catch (error) {
-        statusText.innerText = "❌ เกิดข้อผิดพลาดในการบันทึก";
-        statusText.style.color = "#dc3545";
-        console.error(error);
-      }
+  // 2. คำนวณค่าอัตโนมัติเมื่อมีการพิมพ์เลข
+  document.getElementById('meterInput').addEventListener('input', function() {
+    const currentMeter = parseFloat(this.value);
+    if (isNaN(currentMeter) || currentMeter < lastMeter) {
+      document.getElementById('calcResult').style.display = 'none';
+      return;
     }
-  </script>
+
+    const diff = currentMeter - lastMeter;
+    const today = new Date();
+    const diffTime = Math.abs(today - lastDate);
+    const diffDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24))); // อย่างน้อย 1 วัน
+    const avg = diff / diffDays;
+
+    document.getElementById('diffUnit').innerText = diff.toFixed(2);
+    document.getElementById('avgUnit').innerText = avg.toFixed(2);
+    document.getElementById('calcResult').style.display = 'block';
+  });
+
+  // 3. แสดงรูปพรีวิว
+  document.getElementById('cameraInput').onchange = e => {
+    const file = e.target.files[0];
+    if (file) {
+      document.getElementById('preview').src = URL.createObjectURL(file);
+      document.getElementById('preview').style.display = 'block';
+    }
+  };
+
+  // 4. บันทึกข้อมูล
+  async function saveData() {
+    const meter = document.getElementById('meterInput').value;
+    const avg = document.getElementById('avgUnit').innerText;
+    const status = document.getElementById('status');
+
+    status.innerText = "กำลังบันทึก... ⏳";
+    const now = new Date();
+    
+    try {
+      await fetch(SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        body: JSON.stringify({
+          date: now.toLocaleDateString('en-CA'),
+          time: now.toLocaleTimeString('en-GB'),
+          meter: meter,
+          usePerDay: avg
+        })
+      });
+      status.innerText = "✅ บันทึกสำเร็จ!";
+      status.style.color = "green";
+      setTimeout(() => location.reload(), 2000);
+    } catch (e) {
+      status.innerText = "❌ บันทึกไม่สำเร็จ";
+      status.style.color = "red";
+    }
+  }
+</script>
 </body>
 </html>
