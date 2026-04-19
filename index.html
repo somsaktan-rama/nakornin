@@ -3,202 +3,88 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>มิเตอร์น้ำ Nakornin 1.03</title>
-  
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-
+  <title>จดมิเตอร์น้ำ Nakornin</title>
   <style>
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; padding: 20px; background-color: #f4f7f6; }
     .container { max-width: 400px; margin: auto; background: white; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
     h2 { color: #333; margin-bottom: 5px; }
-    input[type="number"] { padding: 12px; margin: 15px 0; width: 90%; font-size: 24px; text-align: center; border: 2px solid #ccc; border-radius: 8px; }
-    button { padding: 15px; width: 100%; font-size: 18px; margin: 10px 0; cursor: pointer; border: none; border-radius: 8px; font-weight: bold; }
     
-    .btn-camera { background-color: #007bff; color: white; }
-    .btn-crop { background-color: #ffc107; color: black; display: none; }
-    .btn-read { background-color: #17a2b8; color: white; display: none; margin-top: 15px;}
+    /* ส่วนรูปภาพ */
+    .img-container { margin-top: 15px; display: none; border: 2px dashed #ccc; border-radius: 8px; overflow: hidden; background: #000; }
+    img { width: 100%; display: block; }
+    
+    /* ฟอร์มและปุ่ม */
+    input[type="number"] { padding: 15px; margin: 10px 0; width: 90%; font-size: 28px; text-align: center; border: 2px solid #007bff; border-radius: 8px; font-weight: bold; color: #333; }
+    button { padding: 15px; width: 100%; font-size: 18px; margin: 10px 0; cursor: pointer; border: none; border-radius: 8px; font-weight: bold; transition: 0.2s; }
+    .btn-camera { background-color: #6c757d; color: white; }
     .btn-save { background-color: #28a745; color: white; }
     
-    /* กล่องสำหรับครอปรูปและแสดงรูปที่ปรับแต่ง */
-    .img-container { max-width: 100%; margin-top: 15px; display: none; }
-    img { max-width: 100%; display: block; }
-    
-    /* ส่วนควบคุมการปรับภาพ */
-    .control-panel { display: none; background: #eee; padding: 15px; border-radius: 8px; margin-top: 15px; text-align: left; }
-    .control-panel label { font-weight: bold; display: block; margin-bottom: 5px; }
-    input[type=range] { width: 100%; margin-bottom: 10px; }
-    
-    #processedCanvas { max-width: 100%; margin-top: 10px; border: 2px dashed #007bff; border-radius: 4px; background-color: #fff;}
-    
-    #status { margin-top: 15px; font-weight: bold; color: #555; display: none; }
-    .result-section { display: none; border-top: 2px solid #eee; margin-top: 20px; padding-top: 15px; }
-    .note { font-size: 12px; color: #666; margin-top: 5px; margin-bottom: 15px; }
+    .last-meter-text { font-size: 14px; color: #555; font-weight: bold; margin-top: 15px; background: #e9ecef; padding: 8px; border-radius: 5px; }
+    #status { margin-top: 15px; font-weight: bold; }
   </style>
 </head>
 <body>
 
   <div class="container">
     <h2>💧 บันทึกมิเตอร์น้ำ</h2>
-    <p class="note">พยายามถ่ายให้เห็นเฉพาะหน้าปัด เลี่ยงแสงสะท้อน</p>
     
+    <div class="last-meter-text" id="lastMeterDisplay">กำลังดึงค่าครั้งล่าสุด... ⏳</div>
+
     <input type="file" accept="image/*" capture="environment" id="cameraInput" style="display:none;">
-    <button class="btn-camera" onclick="document.getElementById('cameraInput').click()">📸 ถ่ายรูปมิเตอร์</button>
-    
+    <button class="btn-camera" onclick="document.getElementById('cameraInput').click()">📸 ถ่ายรูปมิเตอร์ (เพื่อดูประกอบ)</button>
+
     <div class="img-container" id="imgContainer">
-      <img id="imageToCrop" alt="ภาพมิเตอร์">
+      <img id="previewImage" alt="ภาพมิเตอร์">
     </div>
+
+    <h3 style="margin-top: 20px;">ระบุเลขมิเตอร์:</h3>
+    <input type="number" id="meterValue" step="0.1" placeholder="xxxx.x">
     
-    <button id="btnCrop" class="btn-crop">✂️ ยืนยันกรอบตัวเลข</button>
-
-    <div class="control-panel" id="controlPanel">
-      <label for="thresholdSlider">ปรับความเข้ม (Threshold): <span id="thresholdValue">130</span></label>
-      <input type="range" id="thresholdSlider" min="0" max="255" value="130">
-      <p style="font-size: 12px; color: #555; margin: 0;">* ปรับให้ตัวเลขดำสนิท และพื้นหลังขาวที่สุด</p>
-      
-      <canvas id="processedCanvas"></canvas>
-      
-      <button id="btnRead" class="btn-read">🤖 ให้ AI อ่านตัวเลขจากภาพนี้</button>
-    </div>
-
-    <p id="status">กำลังดำเนินการ... ⏳</p>
-
-    <div class="result-section" id="resultSection">
-      <h3>ค่ามิเตอร์ (ตรวจสอบ/แก้ไขได้):</h3>
-      <input type="number" id="meterValue" step="0.01" placeholder="0.00">
-      <button class="btn-save" onclick="saveData()">💾 บันทึกข้อมูลลง Sheet</button>
-    </div>
-
+    <button class="btn-save" onclick="saveData()">💾 บันทึกข้อมูล</button>
+    <p id="status"></p>
   </div>
 
   <script>
-    // 🔴🔴🔴 นำ Web App URL จาก Google Apps Script มาวางที่นี่ 🔴🔴🔴
+    // 🔴🔴🔴 วาง URL ของ Google Apps Script ของคุณที่นี่ 🔴🔴🔴
     const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxuY1Bh9ajaFTv_gn-GJa4MwaIgUxy2THMmsgxc0MeadFUHIbpgyfyNnbSUefFrdOOe/exec";
 
-    // --- ประกาศตัวแปร DOM ---
     const cameraInput = document.getElementById('cameraInput');
-    const imageToCrop = document.getElementById('imageToCrop');
+    const previewImage = document.getElementById('previewImage');
     const imgContainer = document.getElementById('imgContainer');
-    const btnCrop = document.getElementById('btnCrop');
-    const controlPanel = document.getElementById('controlPanel');
-    const thresholdSlider = document.getElementById('thresholdSlider');
-    const thresholdValueText = document.getElementById('thresholdValue');
-    const processedCanvas = document.getElementById('processedCanvas');
-    const btnRead = document.getElementById('btnRead');
-    const statusText = document.getElementById('status');
     const meterValueInput = document.getElementById('meterValue');
-    const resultSection = document.getElementById('resultSection');
-    
-    let cropper;
-    let croppedCanvasData = null; // เก็บภาพต้นฉบับที่ครอปมาแล้ว
+    const lastMeterDisplay = document.getElementById('lastMeterDisplay');
+    const statusText = document.getElementById('status');
 
-    // 1. เมื่อถ่ายรูปเสร็จ เปิดระบบ Crop
+    // 1. ดึงค่าล่าสุดอัตโนมัติเมื่อเปิดหน้าเว็บ
+    window.onload = async () => {
+      try {
+        const response = await fetch(SCRIPT_URL);
+        const data = await response.json();
+        
+        if (data.status === "success" && data.lastMeter !== "") {
+          lastMeterDisplay.innerText = "ค่าครั้งก่อนคือ: " + data.lastMeter;
+          meterValueInput.value = data.lastMeter; // เอาเลขเดิมใส่รอในช่องกรอกเลย
+        } else {
+          lastMeterDisplay.innerText = "ไม่พบข้อมูลครั้งก่อน";
+        }
+      } catch (error) {
+        lastMeterDisplay.innerText = "เชื่อมต่อฐานข้อมูลล้มเหลว (กรอกเองได้เลย)";
+        console.error(error);
+      }
+    };
+
+    // 2. เมื่อถ่ายรูปเสร็จ เอารูปขึ้นจอให้ดู
     cameraInput.addEventListener('change', (event) => {
       const file = event.target.files[0];
       if (file) {
-        resetUI();
-        const url = URL.createObjectURL(file);
-        imageToCrop.src = url;
+        previewImage.src = URL.createObjectURL(file);
         imgContainer.style.display = 'block';
-        btnCrop.style.display = 'block';
-
-        cropper = new Cropper(imageToCrop, {
-          viewMode: 1, dragMode: 'move', autoCropArea: 0.8,
-          restore: false, guides: true, center: true, highlight: false,
-          cropBoxMovable: true, cropBoxResizable: true, toggleDragModeOnDblclick: false,
-        });
+        // เลื่อนหน้าจอลงมาที่ช่องกรอกอัตโนมัติ
+        meterValueInput.focus();
       }
     });
 
-    // 2. เมื่อกดยืนยันการครอป -> เปิดแผงควบคุม Pre-processing
-    btnCrop.addEventListener('click', () => {
-      if (!cropper) return;
-      
-      // ซ่อนส่วน Crop
-      btnCrop.style.display = 'none';
-      imgContainer.style.display = 'none';
-      
-      // ดึงภาพที่ Crop เก็บไว้
-      const canvas = cropper.getCroppedCanvas();
-      croppedCanvasData = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height);
-      
-      // แสดงแผงควบคุม
-      controlPanel.style.display = 'block';
-      btnRead.style.display = 'block';
-      
-      // วาดภาพครั้งแรก
-      applyThreshold();
-    });
-
-    // 3. ฟังก์ชันปรับภาพขาวดำแบบ Real-time ตามสไลเดอร์
-    function applyThreshold() {
-      if (!croppedCanvasData) return;
-      
-      const threshold = parseInt(thresholdSlider.value);
-      thresholdValueText.innerText = threshold;
-      
-      processedCanvas.width = croppedCanvasData.width;
-      processedCanvas.height = croppedCanvasData.height;
-      const ctx = processedCanvas.getContext('2d');
-      
-      // คัดลอกข้อมูลรูปภาพมาประมวลผล เพื่อไม่ให้ทับต้นฉบับ
-      let imgData = new ImageData(
-        new Uint8ClampedArray(croppedCanvasData.data),
-        croppedCanvasData.width,
-        croppedCanvasData.height
-      );
-      
-      let data = imgData.data;
-      for (let i = 0; i < data.length; i += 4) {
-        let avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-        let bw = avg > threshold ? 255 : 0; 
-        data[i] = data[i+1] = data[i+2] = bw;
-      }
-      ctx.putImageData(imgData, 0, 0);
-    }
-
-    // เมื่อเลื่อนสไลเดอร์ ให้เรียกฟังก์ชันวาดภาพใหม่
-    thresholdSlider.addEventListener('input', applyThreshold);
-
-    // 4. เมื่อกดปุ่มอ่านค่า -> ส่งภาพจาก Canvas ให้ Tesseract
-    btnRead.addEventListener('click', async () => {
-      btnRead.style.display = 'none'; // ซ่อนปุ่มอ่านกันกดซ้ำ
-      statusText.style.display = 'block';
-      statusText.innerText = "🤖 AI กำลังอ่านตัวเลข... ⏳";
-      statusText.style.color = "#007bff";
-
-      const processedImageBase64 = processedCanvas.toDataURL('image/jpeg');
-
-      try {
-        const result = await Tesseract.recognize(processedImageBase64, 'eng');
-        const text = result.data.text;
-        
-        // กรองเอาเฉพาะตัวเลข
-        const numbers = text.match(/\d+(\.\d+)?/g);
-        resultSection.style.display = 'block';
-
-        if (numbers && numbers.length > 0) {
-          const likelyMeter = numbers.sort((a, b) => b.length - a.length)[0];
-          meterValueInput.value = likelyMeter;
-          statusText.innerText = "✅ อ่านค่าเสร็จสิ้น (กรุณาตรวจสอบก่อนบันทึก)";
-          statusText.style.color = "#28a745";
-        } else {
-          meterValueInput.value = "";
-          statusText.innerText = "❌ หาตัวเลขไม่เจอ กรุณาพิมพ์เอง";
-          statusText.style.color = "#dc3545";
-        }
-      } catch (error) {
-        statusText.innerText = "❌ เกิดข้อผิดพลาดในการอ่านภาพ";
-        statusText.style.color = "#dc3545";
-        console.error(error);
-      } finally {
-        btnRead.style.display = 'block'; // แสดงปุ่มกลับคืนมาเผื่ออยากปรับแสงแล้วอ่านใหม่
-      }
-    });
-
-    // 5. ฟังก์ชันบันทึกลง Google Sheet
+    // 3. ฟังก์ชันบันทึกข้อมูล
     async function saveData() {
       const meterValue = meterValueInput.value;
       if (!meterValue) {
@@ -211,12 +97,9 @@
       statusText.style.color = "#007bff";
 
       const now = new Date();
-      const dateStr = now.toLocaleDateString('en-CA'); // YYYY-MM-DD
-      const timeStr = now.toLocaleTimeString('en-GB'); // HH:MM:SS
-
       const payload = {
-        date: dateStr,
-        time: timeStr,
+        date: now.toLocaleDateString('en-CA'), // YYYY-MM-DD
+        time: now.toLocaleTimeString('en-GB'), // HH:MM:SS
         meter: meterValue
       };
 
@@ -228,28 +111,22 @@
           body: JSON.stringify(payload)
         });
 
-        statusText.innerText = "✅ บันทึกข้อมูลลง Sheet เรียบร้อยแล้ว!";
+        statusText.innerText = "✅ บันทึกข้อมูลเรียบร้อยแล้ว!";
         statusText.style.color = "#28a745";
         
-        setTimeout(() => { resetUI(); }, 2000);
+        // อัปเดตค่าครั้งก่อนเป็นค่าที่พึ่งกรอกไป
+        lastMeterDisplay.innerText = "บันทึกล่าสุด: " + meterValue;
+        
+        setTimeout(() => { 
+          statusText.style.display = 'none'; 
+          imgContainer.style.display = 'none'; // ปิดรูป
+        }, 3000);
 
       } catch (error) {
         statusText.innerText = "❌ เกิดข้อผิดพลาดในการบันทึก";
         statusText.style.color = "#dc3545";
         console.error(error);
       }
-    }
-
-    // ฟังก์ชันเคลียร์หน้าจอเตรียมรับรูปใหม่
-    function resetUI() {
-      if (cropper) cropper.destroy();
-      meterValueInput.value = '';
-      imgContainer.style.display = 'none';
-      btnCrop.style.display = 'none';
-      controlPanel.style.display = 'none';
-      resultSection.style.display = 'none';
-      statusText.style.display = 'none';
-      croppedCanvasData = null;
     }
   </script>
 </body>
