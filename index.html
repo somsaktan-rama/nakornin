@@ -3,18 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>จดมิเตอร์ Nakornin</title>
+  <title>จดมิเตอร์น้ำ Nakornin</title>
   <style>
     body { font-family: 'Segoe UI', sans-serif; text-align: center; padding: 20px; background-color: #f4f7f6; }
     .container { max-width: 400px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
     .info-box { background: #e9ecef; padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 14px; text-align: left; }
-    .calc-box { background: #fff3cd; padding: 10px; border-radius: 8px; margin: 15px 0; font-size: 16px; border: 1px solid #ffeeba; display: none; }
+    .calc-box { background: #e3f2fd; padding: 12px; border-radius: 8px; margin: 15px 0; font-size: 16px; border: 1px solid #b6d4fe; display: none; text-align: left;}
     input[type="number"] { width: 90%; padding: 15px; font-size: 28px; text-align: center; border: 2px solid #007bff; border-radius: 8px; margin: 10px 0; }
-    button { width: 100%; padding: 15px; font-size: 18px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; }
+    button { width: 100%; padding: 15px; font-size: 18px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; }
     .btn-camera { background: #6c757d; color: white; margin-bottom: 10px; }
     .btn-save { background: #28a745; color: white; }
     img { width: 100%; border-radius: 8px; margin-top: 10px; display: none; border: 1px solid #ccc; }
-    #status { margin-top: 15px; font-weight: bold; }
+    #status { margin-top: 15px; font-weight: bold; font-size: 14px; }
+    .highlight { color: #0d6efd; font-weight: bold; font-size: 18px; }
   </style>
 </head>
 <body>
@@ -22,7 +23,7 @@
 <div class="container">
   <h2>💧 บันทึกมิเตอร์น้ำ</h2>
   
-  <div class="info-box" id="lastInfo">กำลังดึงข้อมูลล่าสุด...</div>
+  <div class="info-box" id="lastInfo">กำลังดึงข้อมูลล่าสุด... ⏳</div>
 
   <input type="file" accept="image/*" capture="environment" id="cameraInput" style="display:none;">
   <button class="btn-camera" onclick="document.getElementById('cameraInput').click()">📸 ถ่ายรูปดูเลขมิเตอร์</button>
@@ -32,8 +33,9 @@
   <input type="number" id="meterInput" step="0.1" placeholder="0.0">
 
   <div class="calc-box" id="calcResult">
-    <div>ใช้น้ำไป: <span id="diffUnit">0</span> หน่วย</div>
-    <div>เฉลี่ย: <span id="avgUnit">0</span> หน่วย/วัน</div>
+    <div style="margin-bottom: 5px;">ปริมาณน้ำที่ใช้: <span id="diffUnit" class="highlight">0.0</span> หน่วย</div>
+    <div>ค่าเฉลี่ย: <span id="avgUnit" class="highlight">0.0</span> หน่วย/วัน</div>
+    <div style="font-size: 12px; color: #666; margin-top: 5px;" id="timeGapInfo"></div>
   </div>
 
   <button class="btn-save" onclick="saveData()">💾 บันทึกข้อมูล</button>
@@ -41,9 +43,11 @@
 </div>
 
 <script>
-  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxuY1Bh9ajaFTv_gn-GJa4MwaIgUxy2THMmsgxc0MeadFUHIbpgyfyNnbSUefFrdOOe/exec"; // 🔴 เปลี่ยนเป็น URL ของคุณ
+  // 🔴 เปลี่ยนเป็น URL Web App ของคุณ
+  const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxuY1Bh9ajaFTv_gn-GJa4MwaIgUxy2THMmsgxc0MeadFUHIbpgyfyNnbSUefFrdOOe/exec"; 
+  
   let lastMeter = 0;
-  let lastDate = null;
+  let lastDateTime = null; // เก็บเป็น Object Date ของครั้งล่าสุด
 
   // 1. ดึงข้อมูลล่าสุดเมื่อโหลดหน้าเว็บ
   window.onload = async () => {
@@ -52,41 +56,60 @@
       const data = await resp.json();
       if (data.status === "success") {
         lastMeter = data.lastMeter;
-        lastDate = new Date(data.lastDate);
+        
+        // ประกอบร่าง วันที่ + เวลา เพื่อใช้คำนวณผลต่าง (Format: YYYY-MM-DDTHH:mm:ss)
+        lastDateTime = new Date(`${data.lastDate}T${data.lastTime}`);
+        
         document.getElementById('lastInfo').innerHTML = `
-          <b>บันทึกครั้งก่อน:</b> ${data.lastDate}<br>
+          <b>บันทึกครั้งก่อน:</b> ${data.lastDate} (${data.lastTime})<br>
           <b>เลขมิเตอร์เดิม:</b> ${lastMeter}
         `;
         document.getElementById('meterInput').value = lastMeter;
       }
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+      document.getElementById('lastInfo').innerHTML = "โหลดข้อมูลล่าสุดล้มเหลว (กรอกได้เลย)";
+      console.error(e); 
+    }
   };
 
-  // 2. คำนวณค่าอัตโนมัติเมื่อมีการพิมพ์เลข
+  // 2. คำนวณค่าอัตโนมัติรายชั่วโมง เมื่อมีการพิมพ์เลข
   document.getElementById('meterInput').addEventListener('input', function() {
     const currentMeter = parseFloat(this.value);
-    if (isNaN(currentMeter) || currentMeter < lastMeter) {
+    
+    // ถ้าค่าน้อยกว่าเดิม หรือ พิมพ์ไม่ครบ ให้ซ่อนกรอบคำนวณ
+    if (isNaN(currentMeter) || currentMeter < lastMeter || !lastDateTime) {
       document.getElementById('calcResult').style.display = 'none';
       return;
     }
 
-    const diff = currentMeter - lastMeter;
-    const today = new Date();
-    const diffTime = Math.abs(today - lastDate);
-    const diffDays = Math.max(1, Math.ceil(diffTime / (1000 * 60 * 60 * 24))); // อย่างน้อย 1 วัน
-    const avg = diff / diffDays;
+    const diffUnits = currentMeter - lastMeter;
+    const now = new Date();
+    
+    // คำนวณระยะห่างเป็น มิลลิวินาที -> ชั่วโมง
+    const diffMs = Math.abs(now - lastDateTime);
+    const diffHours = diffMs / (1000 * 60 * 60);
 
-    document.getElementById('diffUnit').innerText = diff.toFixed(2);
-    document.getElementById('avgUnit').innerText = avg.toFixed(2);
+    let avgPerDay = 0;
+    if (diffHours > 0) {
+      // สูตร: (จำนวนหน่วย / จำนวนชั่วโมง) * 24 ชั่วโมง
+      avgPerDay = (diffUnits / diffHours) * 24;
+    }
+
+    // แสดงผล ทศนิยม 1 ตำแหน่ง
+    document.getElementById('diffUnit').innerText = diffUnits.toFixed(1);
+    document.getElementById('avgUnit').innerText = avgPerDay.toFixed(1);
+    document.getElementById('timeGapInfo').innerText = `*ระยะเวลาห่าง: ${diffHours.toFixed(1)} ชั่วโมง`;
+    
     document.getElementById('calcResult').style.display = 'block';
   });
 
-  // 3. แสดงรูปพรีวิว
+  // 3. แสดงรูปพรีวิว (สำหรับดูเลขชัดๆ)
   document.getElementById('cameraInput').onchange = e => {
     const file = e.target.files[0];
     if (file) {
       document.getElementById('preview').src = URL.createObjectURL(file);
       document.getElementById('preview').style.display = 'block';
+      document.getElementById('meterInput').focus();
     }
   };
 
@@ -96,13 +119,22 @@
     const avg = document.getElementById('avgUnit').innerText;
     const status = document.getElementById('status');
 
-    status.innerText = "กำลังบันทึก... ⏳";
+    if (!meter) {
+      status.innerText = "❌ กรุณาระบุค่ามิเตอร์ก่อนบันทึก";
+      status.style.color = "#dc3545";
+      return;
+    }
+
+    status.innerText = "กำลังบันทึกข้อมูลลง Sheet... ⏳";
+    status.style.color = "#007bff";
+    
     const now = new Date();
     
     try {
       await fetch(SCRIPT_URL, {
         method: 'POST',
         mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           date: now.toLocaleDateString('en-CA'),
           time: now.toLocaleTimeString('en-GB'),
@@ -110,12 +142,15 @@
           usePerDay: avg
         })
       });
-      status.innerText = "✅ บันทึกสำเร็จ!";
-      status.style.color = "green";
-      setTimeout(() => location.reload(), 2000);
+      
+      status.innerText = "✅ บันทึกสำเร็จเรียบร้อย!";
+      status.style.color = "#28a745";
+      setTimeout(() => location.reload(), 2000); // รีเฟรชหน้าเพื่อเริ่มรอบใหม่
+      
     } catch (e) {
-      status.innerText = "❌ บันทึกไม่สำเร็จ";
-      status.style.color = "red";
+      status.innerText = "❌ การเชื่อมต่อผิดพลาด ไม่สามารถบันทึกได้";
+      status.style.color = "#dc3545";
+      console.error(e);
     }
   }
 </script>
